@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 
-from math import *
-import numpy as np
 import rospy
 from geometry_msgs.msg import Pose2D, Pose
 from sensor_msgs.msg import Imu
 
 
 from EKFSLAM import *
-from copy import copy
 
 
 class EKFSLAMNode(object):
@@ -40,7 +37,11 @@ class EKFSLAMNode(object):
         # gyro data
         self.gyro = []
 
+        # TODO: change timestep accordingly
         self.dt = 0.01
+
+        # imu integrated velocity
+        self.v_integrated = np.zeros(2)
 
     def init_subscribers(self):
         self.subscribers["RelativePose"] = rospy.Subscriber("~/rel_pose", Pose, self.updateEKF)
@@ -54,14 +55,16 @@ class EKFSLAMNode(object):
         self.publishers["station_pose"] = rospy.Publisher("~covariance", Pose2D, queue_size=1)
 
     def process_imu(self, msg):
-        self.acc = [msg.linear_acceleration.x,
-                    msg.linear_acceleration.y,
-                    msg.linear_acceleration.z]
+        self.acc = np.array([msg.linear_acceleration.x,
+                             msg.linear_acceleration.y,
+                             msg.linear_acceleration.z])
 
         # TODO: which coordinate frame?
-        self.gyro = [msg.angular_velocity.x,
-                     msg.angular_velocity.y,
-                     msg.angular_velocity.z]
+        self.gyro = np.array([msg.angular_velocity.x,
+                              msg.angular_velocity.y,
+                              msg.angular_velocity.z])
+
+        self.v_integrated += self.acc[0:2] * self.dt
 
     def predictEKF(self, msg):
         controls = msg.data
@@ -72,6 +75,9 @@ class EKFSLAMNode(object):
         meas = np.array([msg.position.x, msg.position.y])
         self.ekf.update(meas)
         self.publish_poses()
+
+        # TODO: reset integrated velocity
+        self.v_integrated = np.zeros(2)
 
     def publish_poses(self):
         SAM_pose = Pose2D()
